@@ -898,6 +898,14 @@ var MEAL_CATS = {
 
 // Source 1 : TheMealDB — zones géographiques par type de repas
 // Permet d'accéder à ~420 recettes supplémentaires classées par pays
+// Source 2 : DummyJSON — mapping mealType (valeurs exactes de l'API)
+var DUMMYJSON_MEAL_MAP = {
+  breakfast: ['Breakfast', 'Beverage'],
+  lunch:     ['Lunch', 'Appetizer', 'Side Dish'],
+  dinner:    ['Dinner', 'Side Dish', 'Appetizer'],
+  snack:     ['Snack', 'Snacks', 'Dessert', 'Beverage']
+};
+
 var MEAL_AREAS = {
   breakfast: ['British','American','Canadian','Irish','French','Italian','Australian'],
   lunch:     ['British','Spanish','Turkish','Chinese','Thai','Vietnamese','Jamaican','Polish','Canadian','Italian','Japanese','Greek','Croatian','Egyptian','Filipino','Irish','Malaysian','Portuguese','Tunisian','Russian','Ukrainian','Mexican','Moroccan','Kenyan','Indian'],
@@ -912,14 +920,7 @@ var DIET_EXCL_CATS = {
   omnivore:    []
 };
 
-// Source 2 : DummyJSON — mapping mealType
-// 50 recettes avec calories réelles, cuisines variées (Italian, Asian, Mexican, Indian, Japanese…)
-var DUMMYJSON_MEAL_MAP = {
-  breakfast: ['Breakfast','Beverage'],
-  lunch:     ['Lunch','Appetizer','Side Dish'],
-  dinner:    ['Dinner','Side Dish'],
-  snack:     ['Snack','Snacks','Dessert','Appetizer','Beverage']
-};
+
 var EKW = {
   pork:    ['pork','bacon','ham','lard','prosciutto','pancetta','chorizo','salami','sausage'],
   beef:    ['beef','steak','ground beef','veal','brisket','mince'],
@@ -1008,42 +1009,43 @@ function fetchMeal(mealType, tCal) {
   });
 }
 
+
+
+
+
 // ── Source 1 : TheMealDB (catégories + zones géographiques) ──
 function fetchFromMealDB(mealType) {
   var dietExclCats = DIET_EXCL_CATS[S.diet] || [];
   var cats = (MEAL_CATS[mealType] || ['Miscellaneous'])
-    .filter(function(c) { return dietExclCats.indexOf(c) < 0; });
-  if (cats.length === 0) cats = ['Miscellaneous', 'Vegetarian'];
+    .filter(function(c) { return dietExclCats.indexOf(c) < 0; })
+    .slice(0, 3);
+  if (cats.length === 0) cats = ['Miscellaneous'];
+  var areas = shuffleArr(MEAL_AREAS[mealType] || []).slice(0, 3);
 
-  var areas = MEAL_AREAS[mealType] || [];
-  var selectedAreas = shuffleArr(areas).slice(0, 6);
-
-  var catPromises = cats.map(function(cat) {
+  var listPromises = cats.map(function(cat) {
     return fetch('https://www.themealdb.com/api/json/v1/1/filter.php?c=' + encodeURIComponent(cat))
-      .then(function(r) { return r.json(); })
-      .then(function(d) { return (d.meals || []).slice(0, 15); })
+      .then(function(r) { return r.ok ? r.json() : {meals:null}; })
+      .then(function(d) { return (d.meals || []).slice(0, 12); })
       .catch(function() { return []; });
-  });
-
-  var areaPromises = selectedAreas.map(function(area) {
+  }).concat(areas.map(function(area) {
     return fetch('https://www.themealdb.com/api/json/v1/1/filter.php?a=' + encodeURIComponent(area))
-      .then(function(r) { return r.json(); })
-      .then(function(d) { return (d.meals || []).slice(0, 10); })
+      .then(function(r) { return r.ok ? r.json() : {meals:null}; })
+      .then(function(d) { return (d.meals || []).slice(0, 8); })
       .catch(function() { return []; });
-  });
+  }));
 
-  return Promise.all(catPromises.concat(areaPromises)).then(function(results) {
+  return Promise.all(listPromises).then(function(results) {
     var seen = {}, all = [];
     results.forEach(function(arr) {
-      arr.forEach(function(m) {
+      (arr || []).forEach(function(m) {
         if (m && m.idMeal && !seen[m.idMeal]) { seen[m.idMeal] = true; all.push(m); }
       });
     });
     if (all.length === 0) return [];
-    var sample = shuffleArr(all).slice(0, 20);
+    var sample = shuffleArr(all).slice(0, 10);
     var detailPromises = sample.map(function(m) {
       return fetch('https://www.themealdb.com/api/json/v1/1/lookup.php?i=' + m.idMeal)
-        .then(function(r) { return r.json(); })
+        .then(function(r) { return r.ok ? r.json() : {meals:null}; })
         .then(function(d) { return d.meals && d.meals[0] ? normMealDB(d.meals[0]) : null; })
         .catch(function() { return null; });
     });
@@ -1054,16 +1056,16 @@ function fetchFromMealDB(mealType) {
 // ── Source 2 : DummyJSON (50 recettes avec calories réelles) ──
 function fetchFromDummyJSON(mealType) {
   return fetch('https://dummyjson.com/recipes?limit=50&skip=0')
-    .then(function(r) { return r.json(); })
+    .then(function(r) { return r.ok ? r.json() : {recipes:[]}; })
     .then(function(d) {
       var targetTypes = DUMMYJSON_MEAL_MAP[mealType] || ['Dinner'];
-      return (d.recipes || [])
-        .filter(function(r) {
-          var mt = r.mealType || [];
-          return mt.some(function(t) { return targetTypes.indexOf(t) >= 0; });
-        })
-        .map(normDummyJSON)
-        .filter(Boolean);
+      var all = (d.recipes || []);
+      var filtered = all.filter(function(r) {
+        var mt = r.mealType || [];
+        return mt.some(function(t) { return targetTypes.indexOf(t) >= 0; });
+      });
+      if (filtered.length === 0) filtered = all;
+      return filtered.map(normDummyJSON).filter(Boolean);
     })
     .catch(function() { return []; });
 }

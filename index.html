@@ -1142,6 +1142,18 @@ function scoreM(r, mealType, tCal) {
   return s;
 }
 
+function buildExpl(r) {
+  var parts = [];
+  if (S.diet !== 'omnivore') {
+    var lbl = { vegetarian: 'végétarienne', vegan: 'végétalienne', pescatarian: 'pescatarienne' };
+    parts.push('Compatible alimentation ' + (lbl[S.diet] || S.diet));
+  }
+  if (r.area && r.area !== 'Unknown') parts.push('Cuisine ' + r.area);
+  if (r.category) parts.push(r.category);
+  if (r.calories) parts.push(r.calories + ' kcal/portion');
+  return parts.length ? parts.join(' · ') : 'Sélectionnée selon vos préférences';
+}
+
 function scoreRank(meals, mealType, tCal) {
   var seen = {};
   var unique = meals.filter(function(r) { if (seen[r.id]) return false; seen[r.id] = true; return true; });

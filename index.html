@@ -218,8 +218,7 @@
     .rcard-ings strong{color:var(--t2);font-weight:600}
 
     /* Explication */
-    .rcard-why{font-size:.73rem;color:var(--gd);font-weight:500;line-height:1.4;background:var(--gxxl);padding:.4rem .65rem;border-radius:6px;border:1px solid var(--bd2);display:flex;align-items:flex-start;gap:.35rem}
-    .rcard-why-icon{flex-shrink:0;margin-top:.05rem}
+    
 
     /* Footer carte */
     .rcard-foot{padding:.85rem 1.1rem;border-top:1px solid var(--bd);display:flex;gap:.5rem;background:#fafafa;flex-shrink:0}
@@ -228,8 +227,12 @@
     .rcard-cta.disabled{opacity:.35;cursor:not-allowed;transform:none}
     .rcard-yt{padding:.58rem .75rem;background:var(--sf);color:#dc2626;border:1.5px solid #fecaca;border-radius:var(--r);font-size:.78rem;cursor:pointer;text-decoration:none;display:flex;align-items:center;gap:.28rem;transition:all .18s;white-space:nowrap;font-family:'Inter',sans-serif;font-weight:600}
     .rcard-yt:hover{background:#fef2f2;text-decoration:none}
-
-    /* Empty state */
+    .rcard-meta{display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.1rem}
+    .rcard-meta-item{display:inline-flex;align-items:center;gap:.28rem;font-size:.72rem;color:var(--mu);font-weight:500;background:var(--bg);padding:.18rem .5rem;border-radius:999px;border:1px solid var(--bd)}
+    .rcard-meta-cal{color:var(--g);background:var(--gxxl);border-color:var(--bd2);font-weight:700}
+    .rcard-why{font-size:.73rem;color:var(--gd);font-weight:500;line-height:1.4;background:var(--gxxl);padding:.4rem .65rem;border-radius:6px;border:1px solid var(--bd2);display:flex;align-items:flex-start;gap:.35rem}
+    .rcard-why-icon{flex-shrink:0;margin-top:.05rem}
+    
     .empty-state{text-align:center;padding:2.5rem 1.5rem;background:var(--sf);border-radius:var(--rl);border:1.5px dashed var(--bd)}
     .empty-state h3{font-size:.95rem;font-weight:700;margin-bottom:.35rem;color:var(--t2)}
     .empty-state p{font-size:.82rem;color:var(--mu);margin:0}
@@ -884,17 +887,38 @@ function s3next() {
 // ═══════════════════════════════════════════════════════
 // THEMEALDB — LOGIQUE DE SÉLECTION CONSERVÉE
 // ═══════════════════════════════════════════════════════
+// ─── Configuration multi-sources ───────────────────────
+// Source 1 : TheMealDB — catégories par type de repas
 var MEAL_CATS = {
-  breakfast: ['Breakfast','Miscellaneous','Dessert'],
-  lunch:     ['Chicken','Beef','Pasta','Seafood','Vegetarian','Vegan','Lamb','Side','Starter','Miscellaneous'],
-  dinner:    ['Chicken','Beef','Pasta','Seafood','Pork','Lamb','Goat','Miscellaneous','Vegetarian','Vegan'],
-  snack:     ['Starter','Dessert','Miscellaneous','Vegetarian','Vegan','Breakfast']
+  breakfast: ['Breakfast','Miscellaneous','Dessert','Side'],
+  lunch:     ['Chicken','Beef','Pasta','Seafood','Vegetarian','Vegan','Lamb','Side','Starter','Miscellaneous','Pork','Goat'],
+  dinner:    ['Chicken','Beef','Pasta','Seafood','Pork','Lamb','Goat','Miscellaneous','Vegetarian','Vegan','Side'],
+  snack:     ['Starter','Dessert','Miscellaneous','Vegetarian','Vegan','Breakfast','Side']
 };
+
+// Source 1 : TheMealDB — zones géographiques par type de repas
+// Permet d'accéder à ~420 recettes supplémentaires classées par pays
+var MEAL_AREAS = {
+  breakfast: ['British','American','Canadian','Irish','French','Italian','Australian'],
+  lunch:     ['British','Spanish','Turkish','Chinese','Thai','Vietnamese','Jamaican','Polish','Canadian','Italian','Japanese','Greek','Croatian','Egyptian','Filipino','Irish','Malaysian','Portuguese','Tunisian','Russian','Ukrainian','Mexican','Moroccan','Kenyan','Indian'],
+  dinner:    ['British','Spanish','Turkish','Chinese','Thai','Vietnamese','Jamaican','Polish','Canadian','Italian','Japanese','Greek','Croatian','Egyptian','Filipino','Irish','Malaysian','Portuguese','Tunisian','Russian','Ukrainian','Mexican','Moroccan','Kenyan','Indian'],
+  snack:     ['British','Italian','French','Greek','Spanish','Turkish','Indian','Japanese']
+};
+
 var DIET_EXCL_CATS = {
   vegetarian:  ['Beef','Chicken','Pork','Lamb','Seafood','Goat'],
   vegan:       ['Beef','Chicken','Pork','Lamb','Seafood','Goat'],
   pescatarian: ['Beef','Chicken','Pork','Lamb','Goat'],
   omnivore:    []
+};
+
+// Source 2 : DummyJSON — mapping mealType
+// 50 recettes avec calories réelles, cuisines variées (Italian, Asian, Mexican, Indian, Japanese…)
+var DUMMYJSON_MEAL_MAP = {
+  breakfast: ['Breakfast','Beverage'],
+  lunch:     ['Lunch','Appetizer','Side Dish'],
+  dinner:    ['Dinner','Side Dish'],
+  snack:     ['Snack','Snacks','Dessert','Appetizer','Beverage']
 };
 var EKW = {
   pork:    ['pork','bacon','ham','lard','prosciutto','pancetta','chorizo','salami','sausage'],
@@ -959,64 +983,172 @@ function fetchAll() {
   return Promise.all(promises);
 }
 
+
+
+
+
+// ═══════════════════════════════════════════════════════
+// ARCHITECTURE MULTI-SOURCES
+// Source 1 : TheMealDB (catégories + zones géographiques)
+// Source 2 : DummyJSON (calories réelles, cuisines variées)
+// ═══════════════════════════════════════════════════════
+
 function fetchMeal(mealType, tCal) {
-  var cats = MEAL_CATS[mealType] || ['Miscellaneous'];
-  var dietExclCats = DIET_EXCL_CATS[S.diet] || [];
-  var allowedCats  = cats.filter(function(c) { return dietExclCats.indexOf(c) < 0; });
-  if (allowedCats.length === 0) allowedCats = ['Miscellaneous', 'Vegetarian'];
-
-  var catPromises = allowedCats.slice(0, 3).map(function(cat) {
-    return fetch('https://www.themealdb.com/api/json/v1/1/filter.php?c=' + encodeURIComponent(cat))
-      .then(function(r) { return r.json(); })
-      .then(function(d) { return (d.meals || []).slice(0, 8); })
-      .catch(function() { return []; });
-  });
-
-  return Promise.all(catPromises).then(function(results) {
+  var p1 = fetchFromMealDB(mealType);
+  var p2 = fetchFromDummyJSON(mealType);
+  return Promise.all([p1, p2]).then(function(results) {
     var seen = {}, all = [];
     results.forEach(function(arr) {
-      arr.forEach(function(m) {
-        if (!seen[m.idMeal]) { seen[m.idMeal] = true; all.push(m); }
+      arr.forEach(function(r) {
+        if (r && r.id && !seen[r.id]) { seen[r.id] = true; all.push(r); }
       });
     });
-    if (all.length === 0) return [];
-
-    var sample = shuffleArr(all).slice(0, 12);
-    var detailPromises = sample.map(function(m) {
-      return fetch('https://www.themealdb.com/api/json/v1/1/lookup.php?i=' + m.idMeal)
-        .then(function(r) { return r.json(); })
-        .then(function(d) { return d.meals && d.meals[0] ? normMeal(d.meals[0]) : null; })
-        .catch(function() { return null; });
-    });
-
-    return Promise.all(detailPromises).then(function(details) {
-      var valid    = details.filter(Boolean);
-      var filtered = filterMeals(valid);
-      return scoreRank(filtered, mealType, tCal);
-    });
+    var filtered = filterMeals(all);
+    return scoreRank(filtered, mealType, tCal);
   });
 }
 
-function normMeal(m) {
+// ── Source 1 : TheMealDB (catégories + zones géographiques) ──
+function fetchFromMealDB(mealType) {
+  var dietExclCats = DIET_EXCL_CATS[S.diet] || [];
+  var cats = (MEAL_CATS[mealType] || ['Miscellaneous'])
+    .filter(function(c) { return dietExclCats.indexOf(c) < 0; });
+  if (cats.length === 0) cats = ['Miscellaneous', 'Vegetarian'];
+
+  var areas = MEAL_AREAS[mealType] || [];
+  var selectedAreas = shuffleArr(areas).slice(0, 6);
+
+  var catPromises = cats.map(function(cat) {
+    return fetch('https://www.themealdb.com/api/json/v1/1/filter.php?c=' + encodeURIComponent(cat))
+      .then(function(r) { return r.json(); })
+      .then(function(d) { return (d.meals || []).slice(0, 15); })
+      .catch(function() { return []; });
+  });
+
+  var areaPromises = selectedAreas.map(function(area) {
+    return fetch('https://www.themealdb.com/api/json/v1/1/filter.php?a=' + encodeURIComponent(area))
+      .then(function(r) { return r.json(); })
+      .then(function(d) { return (d.meals || []).slice(0, 10); })
+      .catch(function() { return []; });
+  });
+
+  return Promise.all(catPromises.concat(areaPromises)).then(function(results) {
+    var seen = {}, all = [];
+    results.forEach(function(arr) {
+      arr.forEach(function(m) {
+        if (m && m.idMeal && !seen[m.idMeal]) { seen[m.idMeal] = true; all.push(m); }
+      });
+    });
+    if (all.length === 0) return [];
+    var sample = shuffleArr(all).slice(0, 20);
+    var detailPromises = sample.map(function(m) {
+      return fetch('https://www.themealdb.com/api/json/v1/1/lookup.php?i=' + m.idMeal)
+        .then(function(r) { return r.json(); })
+        .then(function(d) { return d.meals && d.meals[0] ? normMealDB(d.meals[0]) : null; })
+        .catch(function() { return null; });
+    });
+    return Promise.all(detailPromises).then(function(details) { return details.filter(Boolean); });
+  });
+}
+
+// ── Source 2 : DummyJSON (50 recettes avec calories réelles) ──
+function fetchFromDummyJSON(mealType) {
+  return fetch('https://dummyjson.com/recipes?limit=50&skip=0')
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      var targetTypes = DUMMYJSON_MEAL_MAP[mealType] || ['Dinner'];
+      return (d.recipes || [])
+        .filter(function(r) {
+          var mt = r.mealType || [];
+          return mt.some(function(t) { return targetTypes.indexOf(t) >= 0; });
+        })
+        .map(normDummyJSON)
+        .filter(Boolean);
+    })
+    .catch(function() { return []; });
+}
+
+// ── Normalisation TheMealDB ──
+function normMealDB(m) {
   if (!m || !m.idMeal || !m.strMeal) return null;
   var ings = [];
   for (var i = 1; i <= 20; i++) {
-    var ing  = m['strIngredient' + i];
+    var ing = m['strIngredient' + i];
     var meas = m['strMeasure' + i];
-    if (ing && ing.trim()) {
-      ings.push({ name: ing.trim().toLowerCase(), measure: meas ? meas.trim() : '' });
-    }
+    if (ing && ing.trim()) ings.push({ name: ing.trim().toLowerCase(), measure: meas ? meas.trim() : '' });
   }
   return {
-    id: m.idMeal, title: m.strMeal,
+    id: 'mdb_' + m.idMeal, title: m.strMeal,
     image: m.strMealThumb || null,
     sourceUrl: m.strSource || ('https://www.themealdb.com/meal/' + m.idMeal),
     youtubeUrl: m.strYoutube || null,
-    category: m.strCategory || '',
-    area: m.strArea || '',
-    ings: ings,
-    ingNames: ings.map(function(i) { return i.name; })
+    category: m.strCategory || '', area: m.strArea || '', cuisine: m.strArea || '',
+    source: 'TheMealDB',
+    calories: null, protein: null, carbs: null, fat: null, servings: null, prepTime: null,
+    ings: ings, ingNames: ings.map(function(i) { return i.name; })
   };
+}
+
+// ── Normalisation DummyJSON ──
+function normDummyJSON(r) {
+  if (!r || !r.id || !r.name) return null;
+  var ings = (r.ingredients || []).map(function(ing) { return { name: ing.toLowerCase(), measure: '' }; });
+  var prepTime = (r.prepTimeMinutes || 0) + (r.cookTimeMinutes || 0);
+  return {
+    id: 'djson_' + r.id, title: r.name,
+    image: r.image || null,
+    sourceUrl: 'https://dummyjson.com/recipes/' + r.id,
+    youtubeUrl: null,
+    category: (r.tags && r.tags[0]) || r.cuisine || '', area: r.cuisine || '', cuisine: r.cuisine || '',
+    source: 'DummyJSON',
+    calories: r.caloriesPerServing || null,
+    protein: null, carbs: null, fat: null,
+    servings: r.servings || null,
+    prepTime: prepTime > 0 ? prepTime : null,
+    rating: r.rating || null,
+    ings: ings, ingNames: ings.map(function(i) { return i.name; })
+  };
+}
+
+// ── Scoring multi-sources ──
+var MEAL_CAT_SCORE = {
+  breakfast: { Breakfast:20, Dessert:8, Miscellaneous:5, Side:6 },
+  lunch:     { Chicken:15, Pasta:15, Vegetarian:15, Vegan:15, Seafood:12, Beef:10, Lamb:10, Side:12, Starter:10, Miscellaneous:5, Pork:8, Goat:6 },
+  dinner:    { Chicken:15, Beef:15, Pasta:12, Seafood:12, Pork:10, Lamb:10, Goat:8, Vegetarian:12, Vegan:12, Miscellaneous:5, Side:8 },
+  snack:     { Starter:18, Dessert:15, Miscellaneous:10, Vegetarian:12, Vegan:12, Breakfast:8, Side:8 }
+};
+
+function scoreM(r, mealType, tCal) {
+  var s = 0;
+  var catMap = MEAL_CAT_SCORE[mealType] || {};
+  s += catMap[r.category] || 3;
+  if (S.diet === 'vegan' && r.category === 'Vegan') s += 15;
+  else if (S.diet === 'vegetarian' && (r.category === 'Vegetarian' || r.category === 'Vegan')) s += 15;
+  else if (S.diet === 'omnivore') s += 10;
+  else s += 7;
+  if (r.calories && tCal > 0) {
+    var dev = Math.abs(r.calories - tCal) / tCal;
+    if (dev <= 0.10) s += 20;
+    else if (dev <= 0.25) s += 14;
+    else if (dev <= 0.40) s += 8;
+    else s += 2;
+  }
+  if (r.ings.length >= 5) s += 8; else if (r.ings.length >= 3) s += 5; else s += 2;
+  if (r.image) s += 4;
+  if (r.sourceUrl) s += 3;
+  if (r.calories) s += 10;
+  if (r.youtubeUrl) s += 4;
+  if (r.area && r.area !== 'Unknown') s += 3;
+  return s;
+}
+
+function scoreRank(meals, mealType, tCal) {
+  var seen = {};
+  var unique = meals.filter(function(r) { if (seen[r.id]) return false; seen[r.id] = true; return true; });
+  return unique
+    .map(function(r) { return Object.assign({}, r, { _s: scoreM(r, mealType, tCal), _e: buildExpl(r) }); })
+    .sort(function(a, b) { return b._s - a._s; })
+    .slice(0, 6);
 }
 
 function ingText(r) {
@@ -1047,54 +1179,11 @@ function filterMeals(meals) {
   });
 }
 
-var MEAL_CAT_SCORE = {
-  breakfast: { Breakfast:20, Dessert:8,  Miscellaneous:5 },
-  lunch:     { Chicken:15,  Pasta:15, Vegetarian:15, Vegan:15, Seafood:12, Beef:10, Lamb:10, Side:12, Starter:10, Miscellaneous:5 },
-  dinner:    { Chicken:15,  Beef:15,  Pasta:12, Seafood:12, Pork:10, Lamb:10, Goat:8, Vegetarian:12, Vegan:12, Miscellaneous:5 },
-  snack:     { Starter:18,  Dessert:15, Miscellaneous:10, Vegetarian:12, Vegan:12, Breakfast:8 }
-};
 
-function scoreM(r, mealType) {
-  var s = 0;
-  var catMap = MEAL_CAT_SCORE[mealType] || {};
-  s += catMap[r.category] || 3;
-  if (S.diet === 'vegan' && r.category === 'Vegan') s += 15;
-  else if (S.diet === 'vegetarian' && (r.category === 'Vegetarian' || r.category === 'Vegan')) s += 15;
-  else if (S.diet === 'omnivore') s += 10;
-  else s += 7;
-  if (r.ings.length >= 5) s += 15;
-  else if (r.ings.length >= 3) s += 10;
-  else s += 5;
-  if (r.image) s += 10;
-  if (r.sourceUrl) s += 10;
-  if (r.youtubeUrl) s += 5;
-  if (r.area && r.area !== 'Unknown') s += 5;
-  return s;
-}
 
-function buildExpl(r) {
-  var parts = [];
-  if (S.diet !== 'omnivore') {
-    var lbl = { vegetarian: 'végétarienne', vegan: 'végétalienne', pescatarian: 'pescatarienne' };
-    parts.push('Compatible alimentation ' + (lbl[S.diet] || S.diet));
-  }
-  if (r.area && r.area !== 'Unknown') parts.push('Cuisine ' + r.area);
-  if (r.category) parts.push(r.category);
-  return parts.length ? parts.join(' · ') : 'Sélectionnée selon vos préférences';
-}
 
-function scoreRank(meals, mealType, tCal) {
-  var seen = {};
-  var unique = meals.filter(function(r) {
-    if (seen[r.id]) return false;
-    seen[r.id] = true;
-    return true;
-  });
-  return unique
-    .map(function(r) { return Object.assign({}, r, { _s: scoreM(r, mealType), _e: buildExpl(r) }); })
-    .sort(function(a, b) { return b._s - a._s; })
-    .slice(0, 6);
-}
+
+
 
 function shuffleArr(arr) {
   var a = arr.slice();
@@ -1202,7 +1291,7 @@ function renderResults(list) {
 function renderCard(r) {
   var ings5 = r.ings.slice(0, 5).map(function(i) { return i.name; }).join(', ');
 
-  // Image — onerror simplifié sans imbrication de guillemets
+  // Image — onerror simplifié
   var imgH;
   if (r.image) {
     imgH = '<img src="' + esc(r.image) + '" alt="' + esc(r.title) + '" loading="lazy" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'" />'
@@ -1211,24 +1300,36 @@ function renderCard(r) {
     imgH = '<div class="rcard-img-ph">' + phSVG() + '</div>';
   }
 
-  // Bouton principal — lien direct vers la recette (target _blank)
-  var btnSrc;
-  if (r.sourceUrl) {
-    btnSrc = '<a href="' + esc(r.sourceUrl) + '" target="_blank" rel="noopener noreferrer" class="rcard-cta">'
-           + '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'
-           + 'Voir la recette'
-           + '</a>';
-  } else {
-    btnSrc = '<span class="rcard-cta disabled">Source non disponible</span>';
-  }
+  // Bouton principal
+  var btnSrc = r.sourceUrl
+    ? '<a href="' + esc(r.sourceUrl) + '" target="_blank" rel="noopener noreferrer" class="rcard-cta">'
+      + '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'
+      + 'Voir la recette</a>'
+    : '<span class="rcard-cta disabled">Source non disponible</span>';
 
-  // Bouton vidéo secondaire
-  var btnYt = '';
-  if (r.youtubeUrl) {
-    btnYt = '<a href="' + esc(r.youtubeUrl) + '" target="_blank" rel="noopener noreferrer" class="rcard-yt">'
-          + '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-2.75 12.64 12.64 0 0 0-8.07 0A4.83 4.83 0 0 1 4.41 6.69 46.29 46.29 0 0 0 4 12a46.29 46.29 0 0 0 .41 5.31 4.83 4.83 0 0 1 3.77 2.75 12.64 12.64 0 0 0 8.07 0 4.83 4.83 0 0 1 3.77-2.75A46.29 46.29 0 0 0 20 12a46.29 46.29 0 0 0-.41-5.31zM10 15V9l5 3z"/></svg>'
-          + 'Vidéo'
-          + '</a>';
+  // Bouton vidéo
+  var btnYt = r.youtubeUrl
+    ? '<a href="' + esc(r.youtubeUrl) + '" target="_blank" rel="noopener noreferrer" class="rcard-yt">'
+      + '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-2.75 12.64 12.64 0 0 0-8.07 0A4.83 4.83 0 0 1 4.41 6.69 46.29 46.29 0 0 0 4 12a46.29 46.29 0 0 0 .41 5.31 4.83 4.83 0 0 1 3.77 2.75 12.64 12.64 0 0 0 8.07 0 4.83 4.83 0 0 1 3.77-2.75A46.29 46.29 0 0 0 20 12a46.29 46.29 0 0 0-.41-5.31zM10 15V9l5 3z"/></svg>'
+      + 'Vidéo</a>'
+    : '';
+
+  // Métadonnées nutritionnelles (calories si disponibles — DummyJSON)
+  var metaHtml = '';
+  if (r.calories) {
+    metaHtml += '<span class="rcard-meta-item rcard-meta-cal">'
+      + '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/><path d="M12 6v6l4 2"/></svg>'
+      + r.calories + ' kcal/portion</span>';
+  }
+  if (r.prepTime) {
+    metaHtml += '<span class="rcard-meta-item">'
+      + '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>'
+      + r.prepTime + ' min</span>';
+  }
+  if (r.servings) {
+    metaHtml += '<span class="rcard-meta-item">'
+      + '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>'
+      + r.servings + ' portion' + (r.servings > 1 ? 's' : '') + '</span>';
   }
 
   return '<div class="rcard">'
@@ -1239,13 +1340,10 @@ function renderCard(r) {
     + (r.category ? '<span class="rcard-tag rcard-tag-cat">' + esc(r.category) + '</span>' : '')
     + (r.area && r.area !== 'Unknown' ? '<span class="rcard-tag rcard-tag-area">' + esc(r.area) + '</span>' : '')
     + '</div>'
-    + '<div class="rcard-img-score">'
-    + '<svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>'
-    + r._s
-    + '</div>'
     + '</div>'
     + '<div class="rcard-body">'
     + '<h3 class="rcard-title">' + esc(r.title) + '</h3>'
+    + (metaHtml ? '<div class="rcard-meta">' + metaHtml + '</div>' : '')
     + (ings5 ? '<p class="rcard-ings"><strong>Ingrédients :</strong> ' + esc(ings5) + (r.ings.length > 5 ? '…' : '') + '</p>' : '')
     + (r._e ? '<div class="rcard-why"><span class="rcard-why-icon"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></span>' + esc(r._e) + '</div>' : '')
     + '</div>'
